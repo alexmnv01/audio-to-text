@@ -108,6 +108,7 @@ README.md
 
 ```powershell
 cd C:\path\to\audio-to-text
+cd G:\Prpgrammers\myPrj\audio-to-text\
 ```
 
 ```powershell
