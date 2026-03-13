@@ -1,0 +1,12 @@
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+$ProjectRoot = Split-Path -Parent $PSScriptRoot
+Set-Location $ProjectRoot
+
+if (-not (Test-Path ".venv\Scripts\python.exe")) {
+    throw "Virtual environment not found. Create it first: python -m venv .venv"
+}
+
+$Python = Resolve-Path ".venv\Scripts\python.exe"
+& $Python app.py
