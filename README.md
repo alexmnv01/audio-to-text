@@ -102,12 +102,22 @@ README.md
 
 ### 2. Создать и активировать виртуальное окружение
 
+Все команды ниже нужно выполнять из корневой директории проекта, где находятся `app.py` и `requirements.txt`.
+
+Пример для Windows:
+
+```powershell
+cd C:\path\to\audio-to-text
+```
+
 ```powershell
 python -m venv .venv
 .venv\Scripts\activate
 ```
 
 ### 3. Установить Python-зависимости
+
+Команду нужно выполнять из той же корневой директории проекта и после активации виртуального окружения.
 
 ```powershell
 pip install -r requirements.txt
