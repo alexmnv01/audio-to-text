@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "audio-to-text"
+description = "Desktop application for batch audio transcription with local Whisper small."
+readme = "README.md"
+requires-python = ">=3.10"
+dynamic = ["version"]
+authors = [
+  { name = "alexmnv01", email = "alexmnv01@gmail.com" }
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "audio_to_text.__version__" }

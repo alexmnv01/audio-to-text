@@ -250,6 +250,19 @@ python -m unittest discover -s tests -v
 - пакетный worker: успешная обработка, ошибка элемента, отмена и критическая ошибка backend;
 - генерация логов и JSON-отчетов.
 
+## Версия проекта
+
+Единственный источник версии проекта:
+- [audio_to_text/__init__.py](/home/alex/projects/audio-to-text/audio_to_text/__init__.py)
+
+Файл [pyproject.toml](/home/alex/projects/audio-to-text/pyproject.toml) читает версию автоматически из `audio_to_text.__version__`.
+
+При изменении версии проекта нужно обновлять номер только в одном месте:
+- [audio_to_text/__init__.py](/home/alex/projects/audio-to-text/audio_to_text/__init__.py)
+
+Текущая версия:
+- `0.1.0`
+
 ## Как пользоваться
 
 ### Обработка списка URL
