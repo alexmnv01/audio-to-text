@@ -1,4 +1,5 @@
 from pathlib import Path
+import time
 from queue import Queue
 import threading
 
@@ -19,11 +20,13 @@ class BatchProcessor:
         downloader: HttpDownloader,
         writer: TranscriptWriter,
         logger: BatchLogger | None = None,
+        transcription_heartbeat_seconds: float = 5.0,
     ) -> None:
         self.backend = backend
         self.downloader = downloader
         self.writer = writer
         self.logger = logger
+        self.transcription_heartbeat_seconds = transcription_heartbeat_seconds
 
     def process(
         self,
@@ -77,16 +80,31 @@ class BatchProcessor:
                 event_queue.put(("item_update", item.item_id, ItemStatus.PROCESSING, "Идет распознавание."))
                 if self.logger:
                     self.logger.info(f"{item.item_id}: начата транскрибация.")
-                transcript = self.backend.transcribe(
-                    source_path,
-                    language,
-                    progress_callback=lambda fraction, segment_text: self._handle_transcription_progress(
-                        item_id=item.item_id,
-                        fraction=fraction,
-                        segment_text=segment_text,
-                        event_queue=event_queue,
-                    ),
+                heartbeat_stop = threading.Event()
+                heartbeat_thread = threading.Thread(
+                    target=self._emit_transcription_heartbeat,
+                    kwargs={
+                        "item_id": item.item_id,
+                        "event_queue": event_queue,
+                        "stop_event": heartbeat_stop,
+                    },
+                    daemon=True,
                 )
+                heartbeat_thread.start()
+                try:
+                    transcript = self.backend.transcribe(
+                        source_path,
+                        language,
+                        progress_callback=lambda fraction, segment_text: self._handle_transcription_progress(
+                            item_id=item.item_id,
+                            fraction=fraction,
+                            segment_text=segment_text,
+                            event_queue=event_queue,
+                        ),
+                    )
+                finally:
+                    heartbeat_stop.set()
+                    heartbeat_thread.join(timeout=0.2)
                 if self.logger:
                     self.logger.info(f"{item.item_id}: транскрибация завершена, символов: {len(transcript)}")
                 if cancel_event.is_set():
@@ -161,3 +179,18 @@ class BatchProcessor:
                 percent = round(fraction * 100)
                 self.logger.info(f"{item_id}: транскрибация {percent}%: {preview}")
         event_queue.put(("transcription_progress", item_id, fraction, preview))
+
+    def _emit_transcription_heartbeat(
+        self,
+        item_id: str,
+        event_queue: Queue,
+        stop_event: threading.Event,
+    ) -> None:
+        started_at = time.monotonic()
+        while not stop_event.wait(self.transcription_heartbeat_seconds):
+            elapsed_seconds = int(time.monotonic() - started_at)
+            if self.logger:
+                self.logger.info(
+                    f"{item_id}: транскрибация продолжается, прошло {elapsed_seconds} сек."
+                )
+            event_queue.put(("transcription_heartbeat", item_id, elapsed_seconds))

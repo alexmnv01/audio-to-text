@@ -1,5 +1,6 @@
 import threading
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from queue import Queue
@@ -11,10 +12,17 @@ from audio_to_text.transcription.worker import BatchProcessor
 
 
 class FakeBackend:
-    def __init__(self, *, fail_ready: bool = False, transcribe_map: dict[str, str] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        fail_ready: bool = False,
+        transcribe_map: dict[str, str] | None = None,
+        transcribe_delay: float = 0.0,
+    ) -> None:
         self.fail_ready = fail_ready
         self.transcribe_map = transcribe_map or {}
         self.transcribed_paths: list[Path] = []
+        self.transcribe_delay = transcribe_delay
 
     def ensure_ready(self) -> None:
         if self.fail_ready:
@@ -22,6 +30,8 @@ class FakeBackend:
 
     def transcribe(self, audio_path: Path, language: str, progress_callback=None) -> str:  # noqa: ARG002
         self.transcribed_paths.append(audio_path)
+        if self.transcribe_delay:
+            time.sleep(self.transcribe_delay)
         if progress_callback is not None:
             progress_callback(0.5, f"segment:{audio_path.stem}")
         return self.transcribe_map.get(audio_path.name, f"text:{audio_path.stem}")
@@ -184,6 +194,37 @@ class BatchProcessorTests(unittest.TestCase):
             self.assertEqual(results[0].status, ItemStatus.DONE)
             self.assertEqual(results[1].status, ItemStatus.CANCELLED)
             self.assertEqual(events[-1], ("finished", True))
+
+    def test_process_emits_transcription_heartbeat_for_slow_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_dir = Path(temp_dir)
+            source_path = output_dir / "slow.mp3"
+            source_path.write_bytes(b"audio")
+            item = BatchJobItem(
+                item_id="file-1",
+                source_label=str(source_path),
+                source_path=source_path,
+                mode=ProcessingMode.FOLDER,
+            )
+            processor = BatchProcessor(
+                backend=FakeBackend(transcribe_delay=0.03),
+                downloader=FakeDownloader(),
+                writer=FakeWriter(),
+                transcription_heartbeat_seconds=0.01,
+            )
+            queue = Queue()
+
+            processor.process(
+                items=[item],
+                output_dir=output_dir,
+                language="ru",
+                existing_file_policy="overwrite",
+                event_queue=queue,
+                cancel_event=threading.Event(),
+            )
+
+            events = self._drain_queue(queue)
+            self.assertTrue(any(event[0] == "transcription_heartbeat" for event in events))
 
     def test_process_emits_critical_error_when_backend_init_fails(self) -> None:
         processor = BatchProcessor(

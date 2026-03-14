@@ -41,11 +41,12 @@ class EnvironmentCheckerTests(unittest.TestCase):
     def test_check_reports_missing_local_model_as_issue(self, _mock_model_check, _mock_which) -> None:
         checker = EnvironmentChecker(app_root=Path.cwd())
 
-        report = checker.check(AppSettings())
+        report = checker.check(AppSettings(model_name="base"))
 
         self.assertFalse(report.ready)
         joined = " ".join(report.issues).lower()
-        self.assertIn("локальная модель 'small' не найдена", joined)
+        self.assertIn("локальная модель 'base' не найдена", joined)
+        self.assertEqual(report.model_name, "base")
 
 
 class BackendMessageTests(unittest.TestCase):

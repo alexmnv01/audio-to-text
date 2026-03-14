@@ -31,6 +31,12 @@ LANGUAGE_OPTIONS = {
     "English": "en",
 }
 
+MODEL_OPTIONS = {
+    "Tiny (быстро, ниже точность)": "tiny",
+    "Base (баланс)": "base",
+    "Small (точнее, медленнее)": "small",
+}
+
 STATUS_LABELS = {
     ItemStatus.QUEUED: "В очереди",
     ItemStatus.DOWNLOADING: "Скачивание",
@@ -81,6 +87,7 @@ class MainWindow:
 
         self.mode_var = tk.StringVar(value=ProcessingMode.URL_LIST.value)
         self.language_var = tk.StringVar(value=self._label_for_language(self.settings.default_language))
+        self.model_var = tk.StringVar(value=self._label_for_model(self.settings.model_name))
         self.input_folder_var = tk.StringVar(value=self.settings.input_folder)
         self.output_folder_var = tk.StringVar(value=self.settings.output_folder)
         self.recursive_var = tk.BooleanVar(value=self.settings.recursive)
@@ -90,6 +97,7 @@ class MainWindow:
         self.summary_var = tk.StringVar(value="Нет активной обработки.")
         self.progress_var = tk.DoubleVar(value=0.0)
         self.progress_text_var = tk.StringVar(value="Прогресс: 0%")
+        self.progress_indeterminate = False
 
         self._build_ui()
         self._bind_settings_persistence()
@@ -128,19 +136,29 @@ class MainWindow:
         )
         language_box.grid(row=0, column=3, sticky="w")
 
-        self.input_path_label = ttk.Label(top, text="Папка с аудио")
-        self.input_path_label.grid(row=1, column=0, sticky="w", pady=(10, 0))
-        self.input_folder_entry = ttk.Entry(top, textvariable=self.input_folder_var)
-        self.input_folder_entry.grid(row=1, column=1, columnspan=2, sticky="ew", pady=(10, 0), padx=(6, 6))
-        self.input_folder_button = ttk.Button(top, text="Выбрать", command=self._choose_input_folder)
-        self.input_folder_button.grid(row=1, column=3, sticky="w", pady=(10, 0))
+        ttk.Label(top, text="Модель").grid(row=1, column=0, sticky="w", pady=(10, 0))
+        self.model_box = ttk.Combobox(
+            top,
+            textvariable=self.model_var,
+            values=list(MODEL_OPTIONS.keys()),
+            state="readonly",
+            width=30,
+        )
+        self.model_box.grid(row=1, column=1, sticky="w", pady=(10, 0), padx=(6, 16))
 
-        ttk.Label(top, text="Папка результатов").grid(row=2, column=0, sticky="w", pady=(10, 0))
+        self.input_path_label = ttk.Label(top, text="Папка с аудио")
+        self.input_path_label.grid(row=2, column=0, sticky="w", pady=(10, 0))
+        self.input_folder_entry = ttk.Entry(top, textvariable=self.input_folder_var)
+        self.input_folder_entry.grid(row=2, column=1, columnspan=2, sticky="ew", pady=(10, 0), padx=(6, 6))
+        self.input_folder_button = ttk.Button(top, text="Выбрать", command=self._choose_input_folder)
+        self.input_folder_button.grid(row=2, column=3, sticky="w", pady=(10, 0))
+
+        ttk.Label(top, text="Папка результатов").grid(row=3, column=0, sticky="w", pady=(10, 0))
         self.output_folder_entry = ttk.Entry(top, textvariable=self.output_folder_var)
         self.output_folder_entry.grid(
-            row=2, column=1, columnspan=2, sticky="ew", pady=(10, 0), padx=(6, 6)
+            row=3, column=1, columnspan=2, sticky="ew", pady=(10, 0), padx=(6, 6)
         )
-        ttk.Button(top, text="Выбрать", command=self._choose_output_folder).grid(row=2, column=3, sticky="w", pady=(10, 0))
+        ttk.Button(top, text="Выбрать", command=self._choose_output_folder).grid(row=3, column=3, sticky="w", pady=(10, 0))
 
         self.recursive_checkbutton = ttk.Checkbutton(
             top,
@@ -149,9 +167,9 @@ class MainWindow:
             command=self._on_recursive_changed,
         )
         self.recursive_checkbutton.grid(
-            row=3, column=1, sticky="w", pady=(10, 0)
+            row=4, column=1, sticky="w", pady=(10, 0)
         )
-        ttk.Label(top, text="Если .txt уже существует").grid(row=3, column=2, sticky="w", pady=(10, 0))
+        ttk.Label(top, text="Если .txt уже существует").grid(row=4, column=2, sticky="w", pady=(10, 0))
         self.policy_box = ttk.Combobox(
             top,
             textvariable=self.policy_var,
@@ -159,7 +177,7 @@ class MainWindow:
             state="readonly",
             width=12,
         )
-        self.policy_box.grid(row=3, column=3, sticky="w", pady=(10, 0))
+        self.policy_box.grid(row=4, column=3, sticky="w", pady=(10, 0))
         self.language_box = language_box
         self.mode_box = mode_box
 
@@ -250,6 +268,7 @@ class MainWindow:
         self.output_folder_entry.bind("<FocusOut>", self._persist_settings_event)
         self.output_folder_entry.bind("<Return>", self._persist_settings_event)
         self.language_box.bind("<<ComboboxSelected>>", self._persist_settings_event)
+        self.model_box.bind("<<ComboboxSelected>>", self._persist_settings_event)
         self.policy_box.bind("<<ComboboxSelected>>", self._persist_settings_event)
         self.mode_box.bind("<<ComboboxSelected>>", self._persist_settings_event, add="+")
 
@@ -273,6 +292,7 @@ class MainWindow:
             input_folder=self.input_folder_var.get().strip(),
             output_folder=self.output_folder_var.get().strip(),
             default_language=LANGUAGE_OPTIONS[self.language_var.get()],
+            model_name=MODEL_OPTIONS[self.model_var.get()],
             recursive=self.recursive_var.get(),
             existing_file_policy=self.policy_var.get(),
         )
@@ -370,7 +390,7 @@ class MainWindow:
         self.processing_progress = {item.item_id: 0.0 for item in items}
 
         processor = BatchProcessor(
-            backend=FasterWhisperBackend(model_name="small", compute_type="int8"),
+            backend=FasterWhisperBackend(model_name=self.settings.model_name, compute_type="int8"),
             downloader=HttpDownloader(),
             writer=TranscriptWriter(),
             logger=self._start_batch_logger(output_dir),
@@ -494,6 +514,9 @@ class MainWindow:
         elif kind == "transcription_progress":
             _, item_id, fraction, preview = event
             self._handle_transcription_progress(item_id, fraction, preview)
+        elif kind == "transcription_heartbeat":
+            _, item_id, elapsed_seconds = event
+            self._handle_transcription_heartbeat(item_id, elapsed_seconds)
         elif kind == "item_result":
             _, result = event
             self._apply_result(result)
@@ -525,6 +548,10 @@ class MainWindow:
         self.status_table.item(item_id, values=(item.source_label, STATUS_LABELS[status], message))
         short_name = Path(item.source_label).name or item.source_label
         self.status_var.set(f"{short_name}: {message}")
+        if status == ItemStatus.PROCESSING:
+            self._set_indeterminate_progress(True)
+        elif status != ItemStatus.PROCESSING:
+            self._set_indeterminate_progress(False)
         if status in {ItemStatus.DONE, ItemStatus.SKIPPED, ItemStatus.CANCELLED, ItemStatus.ERROR}:
             self.processing_progress[item_id] = 1.0
 
@@ -642,6 +669,12 @@ class MainWindow:
                 return label
         return "Auto detect"
 
+    def _label_for_model(self, code: str) -> str:
+        for label, value in MODEL_OPTIONS.items():
+            if value == code:
+                return label
+        return "Small (точнее, медленнее)"
+
     def _item_base_name(self, item: BatchJobItem) -> str:
         if item.source_path is not None:
             return sanitize_filename(item.source_path.stem or item.item_id)
@@ -734,6 +767,7 @@ class MainWindow:
         self.progress_text_var.set(f"Прогресс: {percent}% ({completed}/{total})")
 
     def _reset_progress(self) -> None:
+        self._set_indeterminate_progress(False)
         self.progress_var.set(0.0)
         self.progress_text_var.set("Прогресс: 0%")
 
@@ -751,6 +785,7 @@ class MainWindow:
         percent = round(((index + stage_fraction) / total) * 100)
         completed = index
         stage_name = STATUS_LABELS.get(status, "В работе")
+        self._set_indeterminate_progress(False)
         self.progress_var.set(percent)
         self.progress_text_var.set(
             f"Прогресс: {percent}% ({completed}/{total}) | {stage_name}"
@@ -765,5 +800,26 @@ class MainWindow:
         percent = round((completed_fraction / total) * 100) if total else 0
         short_name = Path(item.source_label).name or item.source_label
         self.status_var.set(f"{short_name}: идет распознавание...")
+        self._set_indeterminate_progress(False)
         self.progress_var.set(percent)
         self.progress_text_var.set(f"Прогресс: {percent}% | Распознавание | {preview}")
+
+    def _handle_transcription_heartbeat(self, item_id: str, elapsed_seconds: int) -> None:
+        item = self.items_by_id[item_id]
+        short_name = Path(item.source_label).name or item.source_label
+        self.status_var.set(f"{short_name}: идет распознавание, прошло {elapsed_seconds} сек.")
+        if self.processing_progress.get(item_id, 0.0) < 0.9:
+            self._set_indeterminate_progress(True)
+            self.progress_text_var.set(
+                f"Распознавание в процессе... {elapsed_seconds} сек"
+            )
+
+    def _set_indeterminate_progress(self, enabled: bool) -> None:
+        if enabled and not self.progress_indeterminate:
+            self.progress_bar.configure(mode="indeterminate")
+            self.progress_bar.start(12)
+            self.progress_indeterminate = True
+        elif not enabled and self.progress_indeterminate:
+            self.progress_bar.stop()
+            self.progress_bar.configure(mode="determinate")
+            self.progress_indeterminate = False

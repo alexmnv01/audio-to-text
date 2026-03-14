@@ -33,6 +33,7 @@ class EnvironmentChecker:
     def check(self, settings: AppSettings) -> EnvironmentReport:
         issues: list[str] = []
         warnings: list[str] = []
+        model_name = settings.model_name or "small"
 
         if WhisperModel is None:
             issues.append("Не найден backend faster-whisper. Установите зависимости проекта.")
@@ -49,13 +50,18 @@ class EnvironmentChecker:
                 issues.append("Папка результатов недоступна для записи.")
 
         if not issues and WhisperModel is not None:
-            if not is_model_available_locally("small"):
+            if not is_model_available_locally(model_name):
                 issues.append(
-                    "Локальная модель 'small' не найдена. Подготовьте модель заранее в локальном кэше "
+                    f"Локальная модель '{model_name}' не найдена. Подготовьте модель заранее в локальном кэше "
                     "faster-whisper / Hugging Face, затем перезапустите приложение."
                 )
 
-        return EnvironmentReport(ready=not issues, issues=issues, warnings=warnings)
+        return EnvironmentReport(
+            ready=not issues,
+            issues=issues,
+            warnings=warnings,
+            model_name=model_name,
+        )
 
 
 def os_access_write(path: Path) -> bool:

@@ -28,6 +28,7 @@ class SettingsManagerTests(unittest.TestCase):
             input_folder="C:/audio",
             output_folder="C:/output",
             default_language="ru",
+            model_name="base",
             recursive=True,
             existing_file_policy="overwrite",
         )
@@ -38,6 +39,7 @@ class SettingsManagerTests(unittest.TestCase):
         self.assertEqual(loaded, source)
         payload = json.loads(self.manager.settings_path.read_text(encoding="utf-8"))
         self.assertEqual(payload["output_folder"], "C:/output")
+        self.assertEqual(payload["model_name"], "base")
 
     def test_load_raises_configuration_error_for_invalid_json(self) -> None:
         self.manager.settings_dir.mkdir(parents=True, exist_ok=True)

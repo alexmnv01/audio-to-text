@@ -13,6 +13,7 @@ class AppSettings:
     input_folder: str = ""
     output_folder: str = ""
     default_language: LanguageOption = "auto"
+    model_name: str = "small"
     recursive: bool = False
     existing_file_policy: str = ExistingFilePolicy.RENAME.value
 
@@ -25,6 +26,7 @@ class AppSettings:
             input_folder=str(data.get("input_folder", "")),
             output_folder=str(data.get("output_folder", "")),
             default_language=str(data.get("default_language", "auto")),
+            model_name=str(data.get("model_name", "small")),
             recursive=bool(data.get("recursive", False)),
             existing_file_policy=str(
                 data.get("existing_file_policy", ExistingFilePolicy.RENAME.value)
