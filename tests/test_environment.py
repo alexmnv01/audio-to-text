@@ -38,13 +38,13 @@ class EnvironmentCheckerTests(unittest.TestCase):
     @patch("audio_to_text.transcription.environment.shutil.which", return_value="ffmpeg")
     @patch("audio_to_text.transcription.environment.WhisperModel", object())
     @patch("audio_to_text.transcription.environment.is_model_available_locally", return_value=False)
-    def test_check_reports_missing_local_model_as_issue(self, _mock_model_check, _mock_which) -> None:
+    def test_check_reports_missing_local_model_as_warning(self, _mock_model_check, _mock_which) -> None:
         checker = EnvironmentChecker(app_root=Path.cwd())
 
         report = checker.check(AppSettings(model_name="base"))
 
-        self.assertFalse(report.ready)
-        joined = " ".join(report.issues).lower()
+        self.assertTrue(report.ready)
+        joined = " ".join(report.warnings).lower()
         self.assertIn("локальная модель 'base' не найдена", joined)
         self.assertEqual(report.model_name, "base")
 

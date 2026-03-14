@@ -51,9 +51,9 @@ class EnvironmentChecker:
 
         if not issues and WhisperModel is not None:
             if not is_model_available_locally(model_name):
-                issues.append(
+                warnings.append(
                     f"Локальная модель '{model_name}' не найдена. Подготовьте модель заранее в локальном кэше "
-                    "faster-whisper / Hugging Face, затем перезапустите приложение."
+                    "faster-whisper / Hugging Face, либо приложение попробует скачать её при первом запуске."
                 )
 
         return EnvironmentReport(
