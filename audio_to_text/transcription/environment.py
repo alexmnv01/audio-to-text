@@ -1,9 +1,9 @@
 import shutil
 from dataclasses import dataclass, field
+import os
 from pathlib import Path
 
 from audio_to_text.settings.schema import AppSettings
-from audio_to_text.transcription.backend import build_model_init_error_message
 
 try:
     from faster_whisper import WhisperModel
@@ -49,10 +49,11 @@ class EnvironmentChecker:
                 issues.append("Папка результатов недоступна для записи.")
 
         if not issues and WhisperModel is not None:
-            try:
-                WhisperModel("small", compute_type="int8")
-            except Exception as exc:
-                issues.append(build_model_init_error_message("small", exc))
+            if not is_model_available_locally("small"):
+                issues.append(
+                    "Локальная модель 'small' не найдена. Подготовьте модель заранее в локальном кэше "
+                    "faster-whisper / Hugging Face, затем перезапустите приложение."
+                )
 
         return EnvironmentReport(ready=not issues, issues=issues, warnings=warnings)
 
@@ -65,3 +66,42 @@ def os_access_write(path: Path) -> bool:
         return True
     except OSError:
         return False
+
+
+def is_model_available_locally(model_name: str) -> bool:
+    return any(path.exists() for path in candidate_model_paths(model_name))
+
+
+def candidate_model_paths(model_name: str) -> list[Path]:
+    repo_name = f"models--Systran--faster-whisper-{model_name}"
+    snapshot_paths = [
+        cache_root / "hub" / repo_name / "snapshots"
+        for cache_root in _candidate_cache_roots()
+    ]
+    return snapshot_paths
+
+
+def _candidate_cache_roots() -> list[Path]:
+    roots: list[Path] = []
+    for env_name in ("HF_HOME", "HUGGINGFACE_HUB_CACHE", "HF_HUB_CACHE"):
+        value = os.getenv(env_name, "").strip()
+        if not value:
+            continue
+        path = Path(value)
+        roots.append(path if env_name == "HF_HOME" else path.parent)
+
+    home = Path.home()
+    roots.extend(
+        [
+            home / ".cache" / "huggingface",
+        ]
+    )
+    unique_roots: list[Path] = []
+    seen: set[Path] = set()
+    for root in roots:
+        normalized = root.resolve(strict=False)
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        unique_roots.append(normalized)
+    return unique_roots

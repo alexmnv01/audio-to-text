@@ -5,7 +5,11 @@ from unittest.mock import patch
 
 from audio_to_text.settings.schema import AppSettings
 from audio_to_text.transcription.backend import build_model_init_error_message
-from audio_to_text.transcription.environment import EnvironmentChecker
+from audio_to_text.transcription.environment import (
+    EnvironmentChecker,
+    candidate_model_paths,
+    is_model_available_locally,
+)
 
 
 class EnvironmentCheckerTests(unittest.TestCase):
@@ -32,21 +36,16 @@ class EnvironmentCheckerTests(unittest.TestCase):
         self.assertIn("не на папку", " ".join(report.issues).lower())
 
     @patch("audio_to_text.transcription.environment.shutil.which", return_value="ffmpeg")
-    @patch("audio_to_text.transcription.environment.WhisperModel", side_effect=Exception(
-        "Got: ConnectError: [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: "
-        "certificate is not yet valid (_ssl.c:1000) "
-        "An error happened while trying to locate the files on the Hub and we cannot find "
-        "the appropriate snapshot folder for the specified revision on the local disk."
-    ))
-    def test_check_reports_model_download_certificate_error_as_issue(self, _mock_model, _mock_which) -> None:
+    @patch("audio_to_text.transcription.environment.WhisperModel", object())
+    @patch("audio_to_text.transcription.environment.is_model_available_locally", return_value=False)
+    def test_check_reports_missing_local_model_as_issue(self, _mock_model_check, _mock_which) -> None:
         checker = EnvironmentChecker(app_root=Path.cwd())
 
         report = checker.check(AppSettings())
 
         self.assertFalse(report.ready)
         joined = " ".join(report.issues).lower()
-        self.assertIn("часовой пояс windows", joined)
-        self.assertIn("локальная копия модели не найдена", joined)
+        self.assertIn("локальная модель 'small' не найдена", joined)
 
 
 class BackendMessageTests(unittest.TestCase):
@@ -60,3 +59,19 @@ class BackendMessageTests(unittest.TestCase):
 
         self.assertIn("Не удалось безопасно скачать модель", message)
         self.assertIn("системное время", message)
+
+
+class ModelCacheTests(unittest.TestCase):
+    def test_candidate_model_paths_uses_hf_home(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with patch.dict("os.environ", {"HF_HOME": temp_dir}, clear=False):
+                paths = candidate_model_paths("small")
+
+        self.assertTrue(any(str(path).endswith("hub/models--Systran--faster-whisper-small/snapshots") for path in paths))
+
+    def test_is_model_available_locally_detects_snapshot_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            snapshot_dir = Path(temp_dir) / "hub" / "models--Systran--faster-whisper-small" / "snapshots" / "123"
+            snapshot_dir.mkdir(parents=True, exist_ok=True)
+            with patch.dict("os.environ", {"HF_HOME": temp_dir}, clear=False):
+                self.assertTrue(is_model_available_locally("small"))
