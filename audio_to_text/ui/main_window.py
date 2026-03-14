@@ -77,6 +77,7 @@ class MainWindow:
         self.current_log_path: Path | None = None
         self.current_report_path: Path | None = None
         self.item_order: list[str] = []
+        self.processing_progress: dict[str, float] = {}
 
         self.mode_var = tk.StringVar(value=ProcessingMode.URL_LIST.value)
         self.language_var = tk.StringVar(value=self._label_for_language(self.settings.default_language))
@@ -366,6 +367,7 @@ class MainWindow:
         self._set_progress(0, len(items))
         self.result_text.delete("1.0", tk.END)
         self._load_items_into_table(items)
+        self.processing_progress = {item.item_id: 0.0 for item in items}
 
         processor = BatchProcessor(
             backend=FasterWhisperBackend(model_name="small", compute_type="int8"),
@@ -489,6 +491,9 @@ class MainWindow:
         elif kind == "item_text":
             _, item_id, text = event
             self.items_by_id[item_id].transcript_text = text
+        elif kind == "transcription_progress":
+            _, item_id, fraction, preview = event
+            self._handle_transcription_progress(item_id, fraction, preview)
         elif kind == "item_result":
             _, result = event
             self._apply_result(result)
@@ -520,6 +525,8 @@ class MainWindow:
         self.status_table.item(item_id, values=(item.source_label, STATUS_LABELS[status], message))
         short_name = Path(item.source_label).name or item.source_label
         self.status_var.set(f"{short_name}: {message}")
+        if status in {ItemStatus.DONE, ItemStatus.SKIPPED, ItemStatus.CANCELLED, ItemStatus.ERROR}:
+            self.processing_progress[item_id] = 1.0
 
     def _apply_result(self, result: BatchItemResult) -> None:
         item = self.items_by_id[result.item_id]
@@ -527,6 +534,7 @@ class MainWindow:
         item.message = result.message
         item.transcript_text = result.transcript_text
         item.output_path = result.output_path
+        self.processing_progress[result.item_id] = 1.0
         self.status_table.item(
             result.item_id,
             values=(item.source_label, STATUS_LABELS[result.status], result.message),
@@ -620,6 +628,7 @@ class MainWindow:
             self.status_table.delete(row)
         self.items_by_id.clear()
         self.item_order.clear()
+        self.processing_progress.clear()
         self.status_var.set("Форма очищена.")
         self.summary_var.set("Нет активной обработки.")
         self._reset_progress()
@@ -738,6 +747,7 @@ class MainWindow:
         except ValueError:
             return
         stage_fraction = STATUS_PROGRESS.get(status, 0.0)
+        self.processing_progress[item_id] = stage_fraction
         percent = round(((index + stage_fraction) / total) * 100)
         completed = index
         stage_name = STATUS_LABELS.get(status, "В работе")
@@ -745,3 +755,15 @@ class MainWindow:
         self.progress_text_var.set(
             f"Прогресс: {percent}% ({completed}/{total}) | {stage_name}"
         )
+
+    def _handle_transcription_progress(self, item_id: str, fraction: float | None, preview: str) -> None:
+        item = self.items_by_id[item_id]
+        normalized_fraction = 0.7 if fraction is None else 0.2 + max(0.0, min(fraction, 1.0)) * 0.7
+        self.processing_progress[item_id] = max(self.processing_progress.get(item_id, 0.2), normalized_fraction)
+        total = len(self.item_order)
+        completed_fraction = sum(self.processing_progress.get(current_id, 0.0) for current_id in self.item_order)
+        percent = round((completed_fraction / total) * 100) if total else 0
+        short_name = Path(item.source_label).name or item.source_label
+        self.status_var.set(f"{short_name}: идет распознавание...")
+        self.progress_var.set(percent)
+        self.progress_text_var.set(f"Прогресс: {percent}% | Распознавание | {preview}")

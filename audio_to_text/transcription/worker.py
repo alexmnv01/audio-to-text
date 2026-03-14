@@ -77,7 +77,16 @@ class BatchProcessor:
                 event_queue.put(("item_update", item.item_id, ItemStatus.PROCESSING, "Идет распознавание."))
                 if self.logger:
                     self.logger.info(f"{item.item_id}: начата транскрибация.")
-                transcript = self.backend.transcribe(source_path, language)
+                transcript = self.backend.transcribe(
+                    source_path,
+                    language,
+                    progress_callback=lambda fraction, segment_text: self._handle_transcription_progress(
+                        item_id=item.item_id,
+                        fraction=fraction,
+                        segment_text=segment_text,
+                        event_queue=event_queue,
+                    ),
+                )
                 if self.logger:
                     self.logger.info(f"{item.item_id}: транскрибация завершена, символов: {len(transcript)}")
                 if cancel_event.is_set():
@@ -136,3 +145,19 @@ class BatchProcessor:
         if item.source_path is None:
             raise AppError("Не удалось определить источник аудио.")
         return item.source_path
+
+    def _handle_transcription_progress(
+        self,
+        item_id: str,
+        fraction: float | None,
+        segment_text: str,
+        event_queue: Queue,
+    ) -> None:
+        preview = segment_text if len(segment_text) <= 80 else f"{segment_text[:77]}..."
+        if self.logger:
+            if fraction is None:
+                self.logger.info(f"{item_id}: сегмент распознан: {preview}")
+            else:
+                percent = round(fraction * 100)
+                self.logger.info(f"{item_id}: транскрибация {percent}%: {preview}")
+        event_queue.put(("transcription_progress", item_id, fraction, preview))

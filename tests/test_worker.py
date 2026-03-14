@@ -20,8 +20,10 @@ class FakeBackend:
         if self.fail_ready:
             raise EnvironmentError("backend init failed")
 
-    def transcribe(self, audio_path: Path, language: str) -> str:  # noqa: ARG002
+    def transcribe(self, audio_path: Path, language: str, progress_callback=None) -> str:  # noqa: ARG002
         self.transcribed_paths.append(audio_path)
+        if progress_callback is not None:
+            progress_callback(0.5, f"segment:{audio_path.stem}")
         return self.transcribe_map.get(audio_path.name, f"text:{audio_path.stem}")
 
 
@@ -86,6 +88,7 @@ class BatchProcessorTests(unittest.TestCase):
             event_kinds = [event[0] for event in events]
             self.assertIn("item_text", event_kinds)
             self.assertIn("item_result", event_kinds)
+            self.assertIn("transcription_progress", event_kinds)
             self.assertEqual(events[-1], ("finished", False))
             result_event = next(event for event in events if event[0] == "item_result")
             self.assertEqual(result_event[1].status, ItemStatus.DONE)

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from audio_to_text.errors.app_errors import EnvironmentError, TranscriptionError
 
@@ -29,7 +29,12 @@ class FasterWhisperBackend:
     def ensure_ready(self) -> None:
         self._get_model()
 
-    def transcribe(self, audio_path: Path, language: str) -> str:
+    def transcribe(
+        self,
+        audio_path: Path,
+        language: str,
+        progress_callback: Callable[[float | None, str], None] | None = None,
+    ) -> str:
         model = self._get_model()
         try:
             segments, _info = model.transcribe(
@@ -41,7 +46,21 @@ class FasterWhisperBackend:
         except Exception as exc:  # pragma: no cover
             raise TranscriptionError(f"Ошибка транскрибации: {exc}") from exc
 
-        text = " ".join(segment.text.strip() for segment in segments if segment.text.strip()).strip()
+        duration = getattr(_info, "duration", None)
+        collected_segments: list[str] = []
+        for segment in segments:
+            segment_text = segment.text.strip()
+            if not segment_text:
+                continue
+            collected_segments.append(segment_text)
+            if progress_callback is not None:
+                segment_end = getattr(segment, "end", None)
+                fraction = None
+                if duration and isinstance(segment_end, (int, float)) and duration > 0:
+                    fraction = max(0.0, min(float(segment_end) / float(duration), 1.0))
+                progress_callback(fraction, segment_text)
+
+        text = " ".join(collected_segments).strip()
         if not text:
             raise TranscriptionError("Распознавание завершилось пустым результатом.")
         return text
