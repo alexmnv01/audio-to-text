@@ -75,6 +75,8 @@ class MainWindow:
         self.policy_var = tk.StringVar(value=self.settings.existing_file_policy)
         self.environment_var = tk.StringVar()
         self.summary_var = tk.StringVar(value="Нет активной обработки.")
+        self.progress_var = tk.DoubleVar(value=0.0)
+        self.progress_text_var = tk.StringVar(value="Прогресс: 0%")
 
         self._build_ui()
         self._bind_settings_persistence()
@@ -131,7 +133,7 @@ class MainWindow:
             top,
             text="Обрабатывать вложенные папки",
             variable=self.recursive_var,
-            command=self._persist_settings,
+            command=self._on_recursive_changed,
         )
         self.recursive_checkbutton.grid(
             row=3, column=1, sticky="w", pady=(10, 0)
@@ -191,10 +193,21 @@ class MainWindow:
         bottom.columnconfigure(0, weight=1)
         ttk.Label(bottom, textvariable=self.environment_var, foreground="#444").grid(row=0, column=0, sticky="w")
         ttk.Label(bottom, textvariable=self.status_var).grid(row=1, column=0, sticky="w", pady=(6, 0))
+        progress_frame = ttk.Frame(bottom)
+        progress_frame.grid(row=2, column=0, sticky="ew", pady=(6, 0))
+        progress_frame.columnconfigure(0, weight=1)
+        self.progress_bar = ttk.Progressbar(
+            progress_frame,
+            variable=self.progress_var,
+            maximum=100,
+            mode="determinate",
+        )
+        self.progress_bar.grid(row=0, column=0, sticky="ew")
+        ttk.Label(progress_frame, textvariable=self.progress_text_var, width=18).grid(row=0, column=1, sticky="e", padx=(10, 0))
         self.paths_label = ttk.Label(bottom, text="", foreground="#444")
-        self.paths_label.grid(row=2, column=0, sticky="w", pady=(6, 0))
+        self.paths_label.grid(row=3, column=0, sticky="w", pady=(6, 0))
         buttons = ttk.Frame(bottom)
-        buttons.grid(row=1, column=1, rowspan=2, sticky="e")
+        buttons.grid(row=1, column=1, rowspan=3, sticky="e")
         self.start_button = ttk.Button(buttons, text="Запуск", command=self._start_processing)
         self.start_button.grid(row=0, column=0, padx=(0, 6))
         self.cancel_button = ttk.Button(buttons, text="Отмена", command=self._cancel_processing, state="disabled")
@@ -216,6 +229,7 @@ class MainWindow:
         self.input_folder_entry.configure(state=state)
         self.input_folder_button.configure(state="normal" if is_folder or is_file else "disabled")
         self.input_path_label.configure(text="Файл с аудио" if is_file else "Папка с аудио")
+        self._refresh_input_preview()
 
     def _bind_settings_persistence(self) -> None:
         self.input_folder_entry.bind("<FocusOut>", self._persist_settings_event)
@@ -262,10 +276,15 @@ class MainWindow:
 
     def _persist_settings_event(self, _event: tk.Event | None = None) -> None:
         self._persist_settings()
+        self._refresh_input_preview()
 
     def _on_close(self) -> None:
         self._persist_settings()
         self.root.destroy()
+
+    def _on_recursive_changed(self) -> None:
+        self._persist_settings()
+        self._refresh_input_preview()
 
     def _choose_input_folder(self) -> None:
         if self.mode_var.get() == ProcessingMode.SINGLE_FILE.value:
@@ -281,6 +300,7 @@ class MainWindow:
         if selected:
             self.input_folder_var.set(selected)
             self._persist_settings()
+            self._refresh_input_preview()
 
     def _choose_output_folder(self) -> None:
         selected = filedialog.askdirectory(title="Выберите папку результатов")
@@ -331,6 +351,7 @@ class MainWindow:
         self.cancel_button.configure(state="normal")
         self.status_var.set("Обработка запущена.")
         self.summary_var.set(f"Подготовлено элементов: {len(items)}")
+        self._set_progress(0, len(items))
         self.result_text.delete("1.0", tk.END)
         self._load_items_into_table(items)
 
@@ -400,6 +421,42 @@ class MainWindow:
                 values=(item.source_label, STATUS_LABELS[item.status], item.message),
             )
 
+    def _refresh_input_preview(self) -> None:
+        if self.processing:
+            return
+        mode = self.mode_var.get()
+        if mode == ProcessingMode.URL_LIST.value:
+            self._clear_preview_table()
+            self.summary_var.set("Нет активной обработки.")
+            self._reset_progress()
+            return
+        try:
+            items = self._build_items()
+        except InputValidationError:
+            self._clear_preview_table()
+            self._reset_progress()
+            if mode == ProcessingMode.FOLDER.value:
+                self.summary_var.set("Нет выбранных файлов для обработки.")
+            elif mode == ProcessingMode.SINGLE_FILE.value:
+                self.summary_var.set("Файл для обработки не выбран.")
+            return
+
+        for item in items:
+            item.message = "Готов к обработке."
+        self._load_items_into_table(items)
+        if mode == ProcessingMode.FOLDER.value:
+            self.status_var.set(f"Найдено файлов для обработки: {len(items)}.")
+            self.summary_var.set(f"Предпросмотр: найдено файлов {len(items)}")
+        elif mode == ProcessingMode.SINGLE_FILE.value:
+            self.status_var.set("Выбран один файл для обработки.")
+            self.summary_var.set("Предпросмотр: выбран 1 файл")
+        self._reset_progress()
+
+    def _clear_preview_table(self) -> None:
+        for row in self.status_table.get_children():
+            self.status_table.delete(row)
+        self.items_by_id.clear()
+
     def _poll_events(self) -> None:
         try:
             while True:
@@ -424,6 +481,7 @@ class MainWindow:
         elif kind == "progress":
             _, index, total = event
             self.status_var.set(f"Обработано {index} из {total}.")
+            self._set_progress(index, total)
             self._update_summary(index=index, total=total)
         elif kind == "critical_error":
             _, message = event
@@ -435,6 +493,8 @@ class MainWindow:
             self.cancel_button.configure(state="disabled")
             if self.status_var.get() != "Пакет остановлен из-за критической ошибки.":
                 self.status_var.set("Обработка отменена." if was_cancelled else "Обработка завершена.")
+            if self.items_by_id:
+                self._set_progress(len(self.items_by_id), len(self.items_by_id))
             self._create_batch_report()
             self._update_summary()
             self._run_environment_check()
@@ -545,6 +605,7 @@ class MainWindow:
         self.items_by_id.clear()
         self.status_var.set("Форма очищена.")
         self.summary_var.set("Нет активной обработки.")
+        self._reset_progress()
         self.paths_label.configure(text="")
         self.current_log_path = None
         self.current_report_path = None
@@ -637,3 +698,15 @@ class MainWindow:
         if self.current_report_path is not None:
             parts.append(f"Отчет: {self.current_report_path}")
         self.paths_label.configure(text=" | ".join(parts))
+
+    def _set_progress(self, completed: int, total: int) -> None:
+        if total <= 0:
+            self._reset_progress()
+            return
+        percent = round((completed / total) * 100)
+        self.progress_var.set(percent)
+        self.progress_text_var.set(f"Прогресс: {percent}% ({completed}/{total})")
+
+    def _reset_progress(self) -> None:
+        self.progress_var.set(0.0)
+        self.progress_text_var.set("Прогресс: 0%")
