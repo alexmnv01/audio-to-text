@@ -197,6 +197,9 @@ cannot find the appropriate snapshot folder
 
 ```powershell
 python app.py
+
+если были изменения в коде, то перед этим выполнить
+.venv\Scripts\activate
 ```
 
 Или через вспомогательный PowerShell-скрипт:
