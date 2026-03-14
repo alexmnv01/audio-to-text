@@ -42,6 +42,17 @@ STATUS_LABELS = {
     ItemStatus.ERROR: "Ошибка",
 }
 
+STATUS_PROGRESS = {
+    ItemStatus.QUEUED: 0.0,
+    ItemStatus.DOWNLOADING: 0.2,
+    ItemStatus.PROCESSING: 0.7,
+    ItemStatus.SAVING: 0.9,
+    ItemStatus.DONE: 1.0,
+    ItemStatus.SKIPPED: 1.0,
+    ItemStatus.CANCELLED: 1.0,
+    ItemStatus.ERROR: 1.0,
+}
+
 
 class MainWindow:
     def __init__(
@@ -65,6 +76,7 @@ class MainWindow:
         self.items_by_id: dict[str, BatchJobItem] = {}
         self.current_log_path: Path | None = None
         self.current_report_path: Path | None = None
+        self.item_order: list[str] = []
 
         self.mode_var = tk.StringVar(value=ProcessingMode.URL_LIST.value)
         self.language_var = tk.StringVar(value=self._label_for_language(self.settings.default_language))
@@ -411,6 +423,7 @@ class MainWindow:
 
     def _load_items_into_table(self, items: list[BatchJobItem]) -> None:
         self.items_by_id = {item.item_id: item for item in items}
+        self.item_order = [item.item_id for item in items]
         for row in self.status_table.get_children():
             self.status_table.delete(row)
         for item in items:
@@ -472,6 +485,7 @@ class MainWindow:
         if kind == "item_update":
             _, item_id, status, message = event
             self._update_item(item_id, status, message)
+            self._set_stage_progress(item_id, status)
         elif kind == "item_text":
             _, item_id, text = event
             self.items_by_id[item_id].transcript_text = text
@@ -504,6 +518,8 @@ class MainWindow:
         item.status = status
         item.message = message
         self.status_table.item(item_id, values=(item.source_label, STATUS_LABELS[status], message))
+        short_name = Path(item.source_label).name or item.source_label
+        self.status_var.set(f"{short_name}: {message}")
 
     def _apply_result(self, result: BatchItemResult) -> None:
         item = self.items_by_id[result.item_id]
@@ -603,6 +619,7 @@ class MainWindow:
         for row in self.status_table.get_children():
             self.status_table.delete(row)
         self.items_by_id.clear()
+        self.item_order.clear()
         self.status_var.set("Форма очищена.")
         self.summary_var.set("Нет активной обработки.")
         self._reset_progress()
@@ -710,3 +727,21 @@ class MainWindow:
     def _reset_progress(self) -> None:
         self.progress_var.set(0.0)
         self.progress_text_var.set("Прогресс: 0%")
+
+    def _set_stage_progress(self, item_id: str, status: ItemStatus) -> None:
+        total = len(self.item_order)
+        if total == 0:
+            self._reset_progress()
+            return
+        try:
+            index = self.item_order.index(item_id)
+        except ValueError:
+            return
+        stage_fraction = STATUS_PROGRESS.get(status, 0.0)
+        percent = round(((index + stage_fraction) / total) * 100)
+        completed = index
+        stage_name = STATUS_LABELS.get(status, "В работе")
+        self.progress_var.set(percent)
+        self.progress_text_var.set(
+            f"Прогресс: {percent}% ({completed}/{total}) | {stage_name}"
+        )

@@ -62,6 +62,8 @@ class BatchProcessor:
                 if self.logger:
                     self.logger.info(f"{item.item_id}: старт обработки источника {item.source_label}")
                 source_path = self._resolve_source(item, event_queue)
+                if self.logger:
+                    self.logger.info(f"{item.item_id}: источник готов: {source_path}")
                 if cancel_event.is_set():
                     if self.logger:
                         self.logger.info(f"{item.item_id}: обработка отменена после подготовки источника.")
@@ -73,7 +75,11 @@ class BatchProcessor:
                     )))
                     continue
                 event_queue.put(("item_update", item.item_id, ItemStatus.PROCESSING, "Идет распознавание."))
+                if self.logger:
+                    self.logger.info(f"{item.item_id}: начата транскрибация.")
                 transcript = self.backend.transcribe(source_path, language)
+                if self.logger:
+                    self.logger.info(f"{item.item_id}: транскрибация завершена, символов: {len(transcript)}")
                 if cancel_event.is_set():
                     if self.logger:
                         self.logger.info(f"{item.item_id}: обработка отменена после распознавания.")
@@ -87,6 +93,8 @@ class BatchProcessor:
                     continue
                 event_queue.put(("item_text", item.item_id, transcript))
                 event_queue.put(("item_update", item.item_id, ItemStatus.SAVING, "Сохраняется .txt файл."))
+                if self.logger:
+                    self.logger.info(f"{item.item_id}: начато сохранение результата.")
                 output_path, message = self.writer.write(
                     output_dir=output_dir,
                     base_name=source_path.stem,
@@ -122,6 +130,8 @@ class BatchProcessor:
     def _resolve_source(self, item: BatchJobItem, event_queue: Queue) -> Path:
         if item.mode == ProcessingMode.URL_LIST and item.source_url:
             event_queue.put(("item_update", item.item_id, ItemStatus.DOWNLOADING, "Скачивается файл по URL."))
+            if self.logger:
+                self.logger.info(f"{item.item_id}: начато скачивание {item.source_url}")
             return self.downloader.download(item.source_url)
         if item.source_path is None:
             raise AppError("Не удалось определить источник аудио.")

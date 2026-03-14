@@ -72,7 +72,5 @@ class BatchLogger:
         if self.log_path is None:
             return
         line = f"{datetime.now(timezone.utc).isoformat()} [{level}] {message}\n"
-        self.log_path.write_text(
-            self.log_path.read_text(encoding="utf-8") + line if self.log_path.exists() else line,
-            encoding="utf-8",
-        )
+        with self.log_path.open("a", encoding="utf-8") as handle:
+            handle.write(line)
