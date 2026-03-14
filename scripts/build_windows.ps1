@@ -13,7 +13,7 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
 $Python = Resolve-Path ".venv\Scripts\python.exe"
 
 & $Python -m pip install --upgrade pip
-& $Python -m pip install -r requirements.txt
+& $Python -m pip install -r requirements-build.txt
 
 if (Test-Path "build") {
     Remove-Item "build" -Recurse -Force

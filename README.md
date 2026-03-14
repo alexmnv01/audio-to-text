@@ -25,7 +25,7 @@ Desktop-приложение под Windows на Python 3.10+ для пакет�
 - `Python 3.10+`
 - `faster-whisper`
 - `requests`
-- `PyInstaller` для сборки Windows `.exe`
+- `PyInstaller` только для сборки Windows `.exe`
 - установленный `ffmpeg`, доступный из `PATH`
 
 Ограничения:
@@ -98,6 +98,13 @@ README.md
 
 Нужен `Python 3.10` или новее.
 
+Практически рекомендуется использовать `Python 3.10-3.13`, 64-bit.
+
+Важно:
+- не рекомендуется использовать alpha, beta и release candidate версии Python;
+- `Python 3.15.0a7` для этого проекта не поддерживается;
+- наиболее практичный вариант для Windows: `Python 3.12 x64`.
+
 На Windows при установке Python включите опцию добавления в `PATH`.
 
 ### 2. Создать и активировать виртуальное окружение
@@ -116,13 +123,23 @@ python -m venv .venv
 .venv\Scripts\activate
 ```
 
-### 3. Установить Python-зависимости
+Если установлено несколько версий Python, лучше явно выбрать стабильный интерпретатор:
+
+```powershell
+py -3.12 -m venv .venv
+.venv\Scripts\activate
+```
+
+### 3. Установить Python-зависимости для запуска приложения
 
 Команду нужно выполнять из той же корневой директории проекта и после активации виртуального окружения.
 
 ```powershell
 pip install -r requirements.txt
 ```
+
+`requirements.txt` содержит только runtime-зависимости для запуска приложения.
+`PyInstaller` туда не входит, потому что он нужен только для сборки `.exe`.
 
 ### 4. Установить ffmpeg
 
@@ -169,16 +186,32 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run_windows.ps1
 
 Минимальный путь для обычного пользователя Windows:
 1. Установить `ffmpeg` и проверить `ffmpeg -version`.
-2. Установить Python 3.10+.
+2. Установить стабильный `Python 3.12 x64`.
 3. Открыть PowerShell в корне проекта.
 4. Выполнить:
 
 ```powershell
-python -m venv .venv
+py -3.12 -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 python app.py
 ```
+
+## Если `pip install -r requirements.txt` завершается с ошибкой
+
+Сначала проверьте версию Python:
+
+```powershell
+python -V
+py -0p
+```
+
+Типовая причина проблем на Windows:
+- установлен слишком новый или нестабильный Python;
+- используется alpha-версия, например `Python 3.15.0a7`;
+- часть зависимостей еще не имеет совместимых wheel-пакетов для такой версии.
+
+Если у вас установлен `Python 3.15.0a7`, установите стабильный `Python 3.12 x64`, создайте новое виртуальное окружение и повторите установку зависимостей.
 
 Если приложение запускается из исходников, отдельная сборка `.exe` не нужна.
 
@@ -203,7 +236,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build_windows.ps1
 
 Скрипт:
 - обновляет `pip`;
-- ставит зависимости из `requirements.txt`;
+- ставит зависимости из `requirements-build.txt`;
 - очищает старые `build/` и `dist/`;
 - запускает `PyInstaller` с файлом [audio_to_text.spec](/home/alex/projects/audio-to-text/audio_to_text.spec).
 
