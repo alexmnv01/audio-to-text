@@ -52,6 +52,34 @@ class FasterWhisperBackend:
                 self._model = WhisperModel(self.model_name, compute_type=self.compute_type)
             except Exception as exc:  # pragma: no cover
                 raise EnvironmentError(
-                    f"Не удалось инициализировать модель '{self.model_name}': {exc}"
+                    build_model_init_error_message(self.model_name, exc)
                 ) from exc
         return self._model
+
+
+def build_model_init_error_message(model_name: str, exc: Exception) -> str:
+    raw_message = str(exc)
+    normalized = raw_message.lower()
+    details = [f"Не удалось инициализировать модель '{model_name}'."]
+
+    if "certificate verify failed" in normalized:
+        details.append(
+            "Не удалось безопасно скачать модель по HTTPS. Проверьте дату, время и часовой пояс Windows, "
+            "затем повторите попытку."
+        )
+        if "certificate is not yet valid" in normalized:
+            details.append(
+                "Судя по тексту ошибки, системное время на компьютере отстает или указано неверно."
+            )
+
+    if "cannot find the appropriate snapshot folder" in normalized or "trying to locate the files on the hub" in normalized:
+        details.append(
+            "Локальная копия модели не найдена. Нужен либо успешный первый запуск с доступом к интернету для "
+            "скачивания модели, либо заранее подготовленный локальный кэш Hugging Face."
+        )
+
+    if len(details) == 1:
+        details.append(raw_message)
+    else:
+        details.append(f"Техническая причина: {raw_message}")
+    return " ".join(details)

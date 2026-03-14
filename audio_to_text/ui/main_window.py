@@ -77,8 +77,10 @@ class MainWindow:
         self.summary_var = tk.StringVar(value="Нет активной обработки.")
 
         self._build_ui()
+        self._bind_settings_persistence()
         self._refresh_mode()
         self._run_environment_check()
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.after(150, self._poll_events)
 
     def _build_ui(self) -> None:
@@ -119,22 +121,32 @@ class MainWindow:
         self.input_folder_button.grid(row=1, column=3, sticky="w", pady=(10, 0))
 
         ttk.Label(top, text="Папка результатов").grid(row=2, column=0, sticky="w", pady=(10, 0))
-        ttk.Entry(top, textvariable=self.output_folder_var).grid(
+        self.output_folder_entry = ttk.Entry(top, textvariable=self.output_folder_var)
+        self.output_folder_entry.grid(
             row=2, column=1, columnspan=2, sticky="ew", pady=(10, 0), padx=(6, 6)
         )
         ttk.Button(top, text="Выбрать", command=self._choose_output_folder).grid(row=2, column=3, sticky="w", pady=(10, 0))
 
-        ttk.Checkbutton(top, text="Обрабатывать вложенные папки", variable=self.recursive_var).grid(
+        self.recursive_checkbutton = ttk.Checkbutton(
+            top,
+            text="Обрабатывать вложенные папки",
+            variable=self.recursive_var,
+            command=self._persist_settings,
+        )
+        self.recursive_checkbutton.grid(
             row=3, column=1, sticky="w", pady=(10, 0)
         )
         ttk.Label(top, text="Если .txt уже существует").grid(row=3, column=2, sticky="w", pady=(10, 0))
-        ttk.Combobox(
+        self.policy_box = ttk.Combobox(
             top,
             textvariable=self.policy_var,
             values=[policy.value for policy in ExistingFilePolicy],
             state="readonly",
             width=12,
-        ).grid(row=3, column=3, sticky="w", pady=(10, 0))
+        )
+        self.policy_box.grid(row=3, column=3, sticky="w", pady=(10, 0))
+        self.language_box = language_box
+        self.mode_box = mode_box
 
         self.url_frame = ttk.LabelFrame(self.root, text="Список URL", padding=12)
         self.url_frame.grid(row=1, column=0, sticky="nsew", padx=12)
@@ -205,6 +217,15 @@ class MainWindow:
         self.input_folder_button.configure(state="normal" if is_folder or is_file else "disabled")
         self.input_path_label.configure(text="Файл с аудио" if is_file else "Папка с аудио")
 
+    def _bind_settings_persistence(self) -> None:
+        self.input_folder_entry.bind("<FocusOut>", self._persist_settings_event)
+        self.input_folder_entry.bind("<Return>", self._persist_settings_event)
+        self.output_folder_entry.bind("<FocusOut>", self._persist_settings_event)
+        self.output_folder_entry.bind("<Return>", self._persist_settings_event)
+        self.language_box.bind("<<ComboboxSelected>>", self._persist_settings_event)
+        self.policy_box.bind("<<ComboboxSelected>>", self._persist_settings_event)
+        self.mode_box.bind("<<ComboboxSelected>>", self._persist_settings_event, add="+")
+
     def _run_environment_check(self) -> None:
         report = self.environment_checker.check(self._collect_settings())
         self._apply_environment_report(report)
@@ -238,6 +259,13 @@ class MainWindow:
             return False
         self._run_environment_check()
         return True
+
+    def _persist_settings_event(self, _event: tk.Event | None = None) -> None:
+        self._persist_settings()
+
+    def _on_close(self) -> None:
+        self._persist_settings()
+        self.root.destroy()
 
     def _choose_input_folder(self) -> None:
         if self.mode_var.get() == ProcessingMode.SINGLE_FILE.value:

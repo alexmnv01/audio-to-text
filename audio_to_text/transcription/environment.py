@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from audio_to_text.settings.schema import AppSettings
+from audio_to_text.transcription.backend import build_model_init_error_message
 
 try:
     from faster_whisper import WhisperModel
@@ -51,10 +52,7 @@ class EnvironmentChecker:
             try:
                 WhisperModel("small", compute_type="int8")
             except Exception as exc:
-                warnings.append(
-                    "Модель small не удалось проверить заранее. "
-                    f"Она будет загружена при первом запуске обработки: {exc}"
-                )
+                issues.append(build_model_init_error_message("small", exc))
 
         return EnvironmentReport(ready=not issues, issues=issues, warnings=warnings)
 
